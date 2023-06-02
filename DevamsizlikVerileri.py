@@ -22,13 +22,16 @@ def devamsizlik():
 
     # PersonLeaves tablosu modeli
     class PersonLeaves(Base):
-        __tablename__ = 'PersonLeaves'
+        __tablename__ = 'personleaves'
 
         Id = Column(Integer, primary_key=True)
         PersonID = Column(Integer)
         StartAt = Column(DateTime)
         EndAt = Column(DateTime)
         Status = Column(Integer)
+
+        CreatedDate = Column(DateTime, default=func.now())
+        UpdatedDate = Column(DateTime, onupdate=func.now())
 
     # MaliyetZarari tablosu modeli
     class MaliyetZarari(Base):
@@ -45,24 +48,24 @@ def devamsizlik():
         CreatedDate = Column(DateTime, default=func.now())
         UpdatedDate = Column(DateTime, onupdate=func.now())
 
-    query = "SELECT * FROM PersonLeaves"
+    query = "SELECT * FROM personleaves"
     person_leaves = pd.read_sql_query(query, engine)
 
     if not person_leaves.empty:
         # PersonLeaves tablosundan verileri çekme ve devamsız günleri toplama
         devamsiz_gunler = session.query(
-            PersonLeaves.personid,
-            func.sum(func.date_part('day', PersonLeaves.endat - PersonLeaves.startat)).label('toplam_devamsizgun'),
-            func.date_part('year', PersonLeaves.startat).label('yil')
-        ).group_by(PersonLeaves.PersonID, func.date_part('year', PersonLeaves.startat))
+            PersonLeaves.PersonID,
+            func.sum(func.date_part('day', PersonLeaves.EndAt - PersonLeaves.StartAt)).label('toplam_devamsizgun'),
+            func.date_part('year', PersonLeaves.StartAt).label('Yil')
+        ).group_by(PersonLeaves.PersonID, func.date_part('year', PersonLeaves.StartAt))
 
         # Her bir veri için işlemleri gerçekleştirme
         for row in devamsiz_gunler:
             person_id = row.PersonID
             toplam_devamsizgun = row.toplam_devamsizgun
-            yil = row.yil
+            yil = row.Yil
 
-            # İlgili PersonID ve yıl için kaydın olup olmadığını kontrol etme
+            # İlgili PersonID ve Yil için kaydın olup olmadığını kontrol etme
             existing_record = session.query(MaliyetZarari).filter_by(PersonID=person_id, Yil=yil).first()
 
             if existing_record:

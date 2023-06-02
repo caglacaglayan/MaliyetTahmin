@@ -1,8 +1,8 @@
-import CalisilmayanGunler
+import TotalGunler
 import DevamsizlikVerileri
 import TahminKayitlari
 
 
 DevamsizlikVerileri.devamsizlik()
 TahminKayitlari.tahmin()
-CalisilmayanGunler.totalkayitlar()
+TotalGunler.totalkayitlar()

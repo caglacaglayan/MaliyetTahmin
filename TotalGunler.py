@@ -1,16 +1,23 @@
 import datetime
-import psycopg2
+import pandas as pd
 from hijridate import Hijri
-
+from sqlalchemy import create_engine, Column, Integer, DateTime, Float, func, select
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base
 
 # Veritabanına bağlantı kurma
-conn = psycopg2.connect(
-    database="shepherd",
-    user="postgres",
-    password="admin",
-    host="localhost",
-    port="5432"
-)
+db_username = 'postgres'
+db_password = 'admin'
+db_host = 'localhost'
+db_port = '5432'
+db_name = 'shepherd'
+
+db_url = f'postgresql://{db_username}:{db_password}@{db_host}:{db_port}/{db_name}'
+engine = create_engine(db_url)
+
+Base = declarative_base()
+Session = sessionmaker(bind=engine)
+session = Session()
 
 
 def hafta_sonu_gunleri(yil):
@@ -86,43 +93,57 @@ def total(gelecek_yil):
     return kesin_gun
 
 
+class ZararTahmini(Base):
+    __tablename__ = 'zarartahmini'
+
+    Id = Column(Integer, primary_key=True)
+    PersonID = Column(Integer)
+    Yil = Column(Integer)
+    TahminiZarar = Column(Float)
+
+    CreatedDate = Column(DateTime, default=func.now())
+    UpdatedDate = Column(DateTime, onupdate=func.now())
+
+
+class TotalTahmin(Base):
+    __tablename__ = 'totaltahmin'
+
+    Id = Column(Integer, primary_key=True, autoincrement=True)
+    Yil = Column(Integer, primary_key=True)
+    CalisilmayanGunler = Column(Integer)
+    TotalTahmin = Column(Float)
+
+    CreatedDate = Column(DateTime, default=func.now())
+    UpdatedDate = Column(DateTime, onupdate=func.now())
+
+
 def totalkayitlar():
     # Kayıtları yıl bazında toplama ve kaydetme
-    cursor = conn.cursor()
+    query = "SELECT * FROM zarartahmini"
+    zarar_tahminleri = pd.read_sql_query(query, engine)
 
-    # Kayıt kontrolü
-    cursor.execute("SELECT COUNT(*) FROM zarartahmini")
-    record_count = cursor.fetchone()[0]
+    if not zarar_tahminleri.empty:
+        devamsiz_tahmin = session.query(
+            ZararTahmini.Yil,
+            func.sum(ZararTahmini.TahminiZarar).label('toplam_tahmin'),
+        ).group_by(ZararTahmini.Yil)
 
-    if record_count > 0:
-        # Yıl bazında toplama işlemini gerçekleştirme
-        cursor.execute("SELECT Yil, SUM(TahminiZarar) FROM zarartahmini GROUP BY Yil")
-        total_tahminler = cursor.fetchall()
+        for tahmin in devamsiz_tahmin:
+            # Yıl bazında toplama işlemini gerçekleştirme
+            yil = tahmin.Yil
+            toplam_tahmin = tahmin.toplam_tahmin
 
-        # Toplam tahminleri totaltahminler tablosuna kaydetme
-        for tahmin in total_tahminler:
-            yil, toplam_tahmin = tahmin
-
-            # Kayıt kontrolü
-            cursor.execute(
-                "SELECT Id, Yil FROM totaltahminler WHERE Yil = %s",
-                (yil,)
-            )
-            existing_record = cursor.fetchone()
-
+            existing_record = session.query(TotalTahmin).filter_by(Yil=yil).first()
             if existing_record:
-                # Kayıt güncelleme
-                record_id, created_date = existing_record
-                update_query = "UPDATE totaltahminler SET TotalTahmin = %s, UpdatedDate = %s WHERE Id = %s"
-                cursor.execute(update_query, (toplam_tahmin, datetime.datetime.now(), record_id))
+                existing_record.TotalTahmin = toplam_tahmin
+                existing_record.CalisilmayanGunler = total(yil)
+                existing_record.UpdatedDate = datetime.datetime.now()
             else:
-                # Yeni kayıt oluşturma
-                insert_query = "INSERT INTO totaltahminler (Yil, TotalTahmin, CalisilmayanGunler, " \
-                               "CreatedDate, UpdatedDate) " \
-                               "VALUES (%s, %s, %s, %s)"
-                current_time = datetime.datetime.now()
-                cursor.execute(insert_query, (yil, toplam_tahmin, total(yil), current_time, current_time))
+                up_date = datetime.datetime.now()
+                cre_date = datetime.datetime.now()
+                new_record = TotalTahmin(Yil=yil, CalisilmayanGunler=total(yil), TotalTahmin=toplam_tahmin,
+                                         CreatedDate=cre_date, UpdatedDate=up_date)
+                session.add(new_record)
 
-            conn.commit()
-    cursor.close()
-    conn.close()
+    session.commit()
+    session.close()
