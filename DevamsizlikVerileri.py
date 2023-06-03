@@ -1,6 +1,6 @@
 import datetime
 import pandas as pd
-from sqlalchemy import create_engine, Column, Integer, DateTime, func
+from sqlalchemy import create_engine, Column, Integer, DateTime, func, Float
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 
@@ -41,9 +41,9 @@ def devamsizlik():
         PersonID = Column(Integer)
         Yil = Column(Integer)
         Durum = Column(Integer)
-        GunlukUcret = Column(Integer)
+        GunlukUcret = Column(Float)
         DevamsizGun = Column(Integer)
-        Zarar = Column(Integer)
+        Zarar = Column(Float)
 
         CreatedDate = Column(DateTime, default=func.now())
         UpdatedDate = Column(DateTime, onupdate=func.now())
@@ -64,20 +64,22 @@ def devamsizlik():
             person_id = row.PersonID
             toplam_devamsizgun = row.toplam_devamsizgun
             yil = row.Yil
+            durum = 1
+            ucret = 1
 
             # İlgili PersonID ve Yil için kaydın olup olmadığını kontrol etme
             existing_record = session.query(MaliyetZarari).filter_by(PersonID=person_id, Yil=yil).first()
 
             if existing_record:
                 # Kayıt mevcut ise güncelleme
+                zarar = durum * ucret * toplam_devamsizgun
+                existing_record.Zarar = zarar
                 existing_record.DevamsizGun = toplam_devamsizgun
                 existing_record.UpdatedDate = datetime.datetime.now()
             else:
                 # Kayıt mevcut değilse yeni kayıt ekleme
                 up_date = datetime.datetime.now()
                 cre_date = datetime.datetime.now()
-                durum = 1
-                ucret = 1
                 zarar = durum * ucret * toplam_devamsizgun
                 new_record = MaliyetZarari(PersonID=person_id, Yil=yil, Durum=durum, GunlukUcret=ucret,
                                            DevamsizGun=toplam_devamsizgun,
